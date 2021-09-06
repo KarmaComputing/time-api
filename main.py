@@ -1,7 +1,7 @@
 import requests
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import date
 from typing import Optional
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -19,8 +19,8 @@ API_TOKEN = os.getenv("API_TOKEN")
 class TimeEntries(BaseModel):
     user_id: int
     account_id: int
-    date_start: Optional[datetime] = None
-    date_end: Optional[datetime] = None
+    date_start: Optional[date] = None
+    date_end: Optional[date] = None
 
 
 def getTimeEntries(timeEntries: TimeEntries):
