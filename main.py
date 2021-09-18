@@ -24,8 +24,8 @@ RATE_PER_MIN = float(os.getenv("RATE_PER_MIN"))
 class TimeEntries(BaseModel):
     user_id: int
     account_id: int
-    date_start: Optional[date] = None
-    date_end: Optional[date] = None
+    startDate: Optional[date] = None
+    endDate: Optional[date] = None
 
 
 class TmetricAccount(BaseModel):
@@ -43,8 +43,8 @@ def getTimeEntries(timeEntries: TimeEntries):
         "account": "text/plain",
     }
 
-    startDate = timeEntries.date_start.strftime("%Y-%m-%d")
-    endDate = timeEntries.date_end.strftime("%Y-%m-%d")
+    startDate = timeEntries.startDate.strftime("%Y-%m-%d")
+    endDate = timeEntries.endDate.strftime("%Y-%m-%d")
 
     api_call = f"{API_HOST}accounts/{ACCOUNT_ID}/timeentries?userId={USER_ID}&startDate={startDate}&endDate={endDate}"  # noqa: E501
 
@@ -52,10 +52,24 @@ def getTimeEntries(timeEntries: TimeEntries):
         api_call,
         headers=headers,
     )
-    return req.json()
+    return req
 
 
-def getTotalUserBillableThisMonth(user_id, account_id, rate_per_min=0.75):
+def tallyTotalTime(req):
+    """Sum all time entries from the given json resp"""
+
+    totalTime = timedelta()
+    for entry in req:
+        startTime = datetime.strptime(entry["startTime"], "%Y-%m-%dT%H:%M:%S")
+
+        endTime = datetime.strptime(entry["endTime"], "%Y-%m-%dT%H:%M:%S")
+
+        diff = endTime - startTime
+        totalTime += diff
+    return totalTime
+
+
+def getTotalUserBillableThisMonth(user_id, account_id):
     """Calculate the totall billable this month for a user
     return: json
         - The number of minutes invested
@@ -70,16 +84,6 @@ def getTotalUserBillableThisMonth(user_id, account_id, rate_per_min=0.75):
           "ratePerMin": RATE_PER_MIN,
         }
     """
-
-    USER_ID = user_id
-    ACCOUNT_ID = account_id
-    totalTime = timedelta()
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "account": "text/plain",
-    }
-
     today = date.today()
 
     startDate = today.strftime("%Y-%m-1")  # Always first day of current month
@@ -87,24 +91,20 @@ def getTotalUserBillableThisMonth(user_id, account_id, rate_per_min=0.75):
     last_day = calendar.monthrange(today.year, int(today.month))[1]
 
     endDate = today.strftime(f"%Y-%m-{last_day}")
-
-    api_call = f"{API_HOST}accounts/{ACCOUNT_ID}/timeentries?userId={USER_ID}&startDate={startDate}&endDate={endDate}"  # noqa: E501
-    try:
-        req = requests.get(
-            api_call,
-            headers=headers,
+    req = getTimeEntries(
+        TimeEntries(
+            user_id=user_id,
+            account_id=account_id,
+            startDate=startDate,
+            endDate=endDate,  # noqa: E501
         )
-    except requests.exceptions.ConnectionError as e:
-        return f"Connection error to tmetric. {e}"
+    )
+    try:
+        req.raise_for_status()
+    except requests.exceptions.HTTPError as e:
+        return {"error": f"Error fetching time entries: {e}"}
 
-    resp = req.json()
-    for entry in resp:
-        startTime = datetime.strptime(entry["startTime"], "%Y-%m-%dT%H:%M:%S")
-
-        endTime = datetime.strptime(entry["endTime"], "%Y-%m-%dT%H:%M:%S")
-
-        diff = endTime - startTime
-        totalTime += diff
+    totalTime = tallyTotalTime(req.json())
 
     def calculateBillable(seconds, ratePerMin):
         return seconds / 60 * RATE_PER_MIN
@@ -121,40 +121,21 @@ def getTotalUserBillableThisMonth(user_id, account_id, rate_per_min=0.75):
 
 
 def getTotalUserBillableByMonth(
-    user_id: int, account_id: int, rate_per_min: int, month: int, year: int
-):
-    USER_ID = user_id
-    ACCOUNT_ID = account_id
-    totalTime = timedelta()
-
-    headers = {
-        "Authorization": f"Bearer {API_TOKEN}",
-        "account": "text/plain",
-    }
-
+    user_id: int, account_id: int, month: int, year: int
+):  # noqa: E501
     startDate = date(year, month, 1)  # Always from the first date of the month
-
     last_day = calendar.monthrange(year, month)[1]
-
     endDate = startDate.strftime(f"%Y-%m-{last_day}")
 
-    api_call = f"{API_HOST}accounts/{ACCOUNT_ID}/timeentries?userId={USER_ID}&startDate={startDate}&endDate={endDate}"  # noqa: E501
-    try:
-        req = requests.get(
-            api_call,
-            headers=headers,
+    req = getTimeEntries(
+        TimeEntries(
+            user_id=user_id,
+            account_id=account_id,
+            startDate=startDate,
+            endDate=endDate,  # noqa: E501
         )
-    except requests.exceptions.ConnectionError as e:
-        return f"Connection error to tmetric. {e}"
-
-    resp = req.json()
-    for entry in resp:
-        startTime = datetime.strptime(entry["startTime"], "%Y-%m-%dT%H:%M:%S")
-
-        endTime = datetime.strptime(entry["endTime"], "%Y-%m-%dT%H:%M:%S")
-
-        diff = endTime - startTime
-        totalTime += diff
+    )
+    totalTime = tallyTotalTime(req.json())
 
     def calculateBillable(seconds, ratePerMin):
         return (seconds / 60) * RATE_PER_MIN
@@ -167,22 +148,57 @@ def getTotalUserBillableByMonth(
         "billable-pennies": int(billable * 100),
         "billable-human-readable": f"£{billable}",
         "ratePerMin": RATE_PER_MIN,
-        "tmetric_raw": resp,
+        "tmetric_raw": req.json(),
     }
 
 
-@app.post("/tmetric-timeentries")
-async def read_item(timeEntries: TimeEntries):
-    return getTimeEntries(timeEntries)
+def getTotalBillableThisMonth(user_ids: str, account_id: int):
+    """
+    Work out amount billable for all given users combined
+    """
+    billablePence = 0
+    minutes = 0
+    for user_id in user_ids.split(","):
+        usersTime = getTotalUserBillableThisMonth(int(user_id), account_id)
+        billablePence += usersTime["billable-pennies"]
+        minutes += usersTime["totalMinutes"]
+    return {
+        "totalMinutes": minutes,
+        "totalHours": minutes / 60,
+        "billable-pounds": billablePence / 100,
+        "billable-pennies": billablePence,
+        "billable-human-readable": f"£{billablePence / 100}",
+        "averageRatePerMin": billablePence / minutes / 100,
+    }
+
+
+def getTotalBillableByMonth(
+    user_ids: str, account_id: int, year: int, month: int
+):  # noqa: E501
+    """
+    Work out amount billable for all given users combined
+    """
+    billablePence = 0
+    minutes = 0
+    for user_id in user_ids.split(","):
+        usersTime = getTotalUserBillableByMonth(
+            int(user_id), account_id=account_id, month=month, year=year
+        )
+        billablePence += usersTime["billable-pennies"]
+        minutes += usersTime["totalMinutes"]
+    return {
+        "totalMinutes": minutes,
+        "totalHours": minutes / 60,
+        "billable-pounds": billablePence / 100,
+        "billable-pennies": billablePence,
+        "billable-human-readable": f"£{billablePence / 100}",
+        "averageRatePerMin": billablePence / minutes / 100,
+    }
 
 
 @app.get("/total-user-billable-this-month")
-async def total_user_billable_this_month(
-    user_id: int, account_id: int, rate_per_min: Optional[int] = None
-):
-    return getTotalUserBillableThisMonth(
-        user_id, account_id, rate_per_min=rate_per_min
-    )  # noqa: E501
+async def total_user_billable_this_month(user_id: int, account_id: int):
+    return getTotalUserBillableThisMonth(user_id, account_id)
 
 
 @app.get("/total-user-billable-by-month")
@@ -191,8 +207,27 @@ async def total_user_billable_by_month(
     account_id: int,
     month: int,
     year: Optional[int] = datetime.today().year,
-    rate_per_min: Optional[int] = None,
 ):
     return getTotalUserBillableByMonth(
-        user_id, account_id, rate_per_min=rate_per_min, month=month, year=year
+        user_id, account_id, month=month, year=year
     )  # noqa: E501
+
+
+@app.get("/total-billable-by-month")
+async def total_billable_by_month(
+    user_ids: str,
+    account_id: int,
+    month: int,
+    year: Optional[int] = datetime.today().year,
+):
+    return getTotalBillableByMonth(user_ids, account_id, year, month)  # noqa: E501
+
+
+@app.get("/total-billable-this-month")
+async def total_billable_this_month(
+    user_ids: str,
+    account_id: int,
+    month: int,
+    year: Optional[int] = datetime.today().year,
+):
+    return getTotalBillableThisMonth(user_ids, account_id)  # noqa: E501
