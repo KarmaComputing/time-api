@@ -109,10 +109,10 @@ def getTotalUserBillableThisMonth(user_id, account_id, rate_per_min=0.75):
     def calculateBillable(seconds, ratePerMin):
         return seconds / 60 * RATE_PER_MIN
 
-    billable = calculateBillable(totalTime.seconds, RATE_PER_MIN)
+    billable = calculateBillable(totalTime.total_seconds(), RATE_PER_MIN)
     return {
-        "totalMinutes": int(totalTime.seconds / 60),
-        "totalHours": totalTime.seconds / 60 / 60,
+        "totalMinutes": int(totalTime.total_seconds() / 60),
+        "totalHours": totalTime.total_seconds() / 60 / 60,
         "billable-pounds": billable,
         "billable-pennies": int(billable * 100),
         "billable-human-readable": f"£{billable}",
@@ -157,12 +157,12 @@ def getTotalUserBillableByMonth(
         totalTime += diff
 
     def calculateBillable(seconds, ratePerMin):
-        return seconds / 60 * RATE_PER_MIN
+        return (seconds / 60) * RATE_PER_MIN
 
-    billable = calculateBillable(totalTime.seconds, RATE_PER_MIN)
+    billable = calculateBillable(totalTime.total_seconds(), RATE_PER_MIN)
     return {
-        "totalMinutes": int(totalTime.seconds / 60),
-        "totalHours": totalTime.seconds / 60 / 60,
+        "totalMinutes": int(totalTime.total_seconds() / 60),
+        "totalHours": totalTime.total_seconds() / 60 / 60,
         "billable-pounds": billable,
         "billable-pennies": int(billable * 100),
         "billable-human-readable": f"£{billable}",
