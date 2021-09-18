@@ -152,10 +152,15 @@ def getTotalUserBillableByMonth(
     }
 
 
-def getTotalBillableThisMonth(user_ids: str, account_id: int):
+def getTotalBillableThisMonth(user_ids, account_id: int):
     """
     Work out amount billable for all given users combined
     """
+    if user_ids is None:
+        user_ids = os.getenv("TMETRIC_USER_IDS")
+    if account_id is None:
+        account_id = os.getenv("TMETRIC_ACCOUNT_ID")
+
     billablePence = 0
     minutes = 0
     for user_id in user_ids.split(","):
@@ -225,9 +230,7 @@ async def total_billable_by_month(
 
 @app.get("/total-billable-this-month")
 async def total_billable_this_month(
-    user_ids: str,
-    account_id: int,
-    month: int,
-    year: Optional[int] = datetime.today().year,
+    account_id: Optional[int] = None,
+    user_ids: Optional[str] = None,
 ):
     return getTotalBillableThisMonth(user_ids, account_id)  # noqa: E501
