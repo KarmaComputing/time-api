@@ -9,7 +9,21 @@ from pydantic import BaseModel
 import calendar
 
 
-description = "Get time invested"
+title = "Karma Computing Time Invested API ⏰"
+description = """
+View time invested, billable amounts. <small>[Code](https://github.com/KarmaComputing/time-api])</small> 🚀
+
+# See also
+
+## Recurring Revenue
+
+- [Monthly Recurring Revenue](https://reccuring-revenue.pcpink.co.uk/docs) ([Code](https://github.com/KarmaComputing/reccuring-revenue/))
+
+## Accounts & Cashflow
+
+- [Accounts & Cashflow](https://time.karmacomputing.co.uk/) ([Code](https://github.com/KarmaComputing/balance))
+
+"""
 
 app = FastAPI(title="Time API", description=description, docs_url="/")
 
