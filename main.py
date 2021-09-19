@@ -15,8 +15,8 @@ app = FastAPI(title="Time API", description=description, docs_url="/")
 
 load_dotenv(verbose=True)
 
-API_HOST = os.getenv("API_HOST", "https://app.tmetric.com/api/v3/")
-API_TOKEN = os.getenv("API_TOKEN")
+API_HOST = os.getenv("TMETRIC_API_HOST", "https://app.tmetric.com/api/v3/")
+API_TOKEN = os.getenv("TMETRIC_API_TOKEN")
 
 RATE_PER_MIN = float(os.getenv("RATE_PER_MIN"))
 
@@ -47,7 +47,6 @@ def getTimeEntries(timeEntries: TimeEntries):
     endDate = timeEntries.endDate.strftime("%Y-%m-%d")
 
     api_call = f"{API_HOST}accounts/{ACCOUNT_ID}/timeentries?userId={USER_ID}&startDate={startDate}&endDate={endDate}"  # noqa: E501
-
     req = requests.get(
         api_call,
         headers=headers,
@@ -178,11 +177,15 @@ def getTotalBillableThisMonth(user_ids, account_id: int):
 
 
 def getTotalBillableByMonth(
-    user_ids: str, account_id: int, year: int, month: int
+    user_ids, account_id: int, year: int, month: int
 ):  # noqa: E501
     """
     Work out amount billable for all given users combined
     """
+    if user_ids is None:
+        user_ids = os.getenv("TMETRIC_USER_IDS")
+    if account_id is None:
+        account_id = os.getenv("TMETRIC_ACCOUNT_ID")
     billablePence = 0
     minutes = 0
     for user_id in user_ids.split(","):
@@ -220,10 +223,10 @@ async def total_user_billable_by_month(
 
 @app.get("/total-billable-by-month")
 async def total_billable_by_month(
-    user_ids: str,
-    account_id: int,
     month: int,
     year: Optional[int] = datetime.today().year,
+    account_id: Optional[int] = None,
+    user_ids: Optional[str] = None,
 ):
     return getTotalBillableByMonth(user_ids, account_id, year, month)  # noqa: E501
 
