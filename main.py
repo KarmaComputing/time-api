@@ -21,7 +21,7 @@ View time invested, billable amounts. <small>[Code](https://github.com/KarmaComp
 
 ## Accounts & Cashflow
 
-- [Accounts & Cashflow](https://time.karmacomputing.co.uk/) ([Code](https://github.com/KarmaComputing/balance))
+- [Accounts & Cashflow](https://balance.karmacomputing.co.uk/docs) ([Code](https://github.com/KarmaComputing/balance))
 
 """
 
